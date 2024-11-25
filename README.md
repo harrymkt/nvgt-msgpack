@@ -103,7 +103,7 @@ Type-specific get methods, the explicit way to get that type from a value.
 10. `int16 get_int16();` (3)
 11. `uint8 get_uint8();` (3)
 12. `int8 get_int8();` (3)
-13. `array<const mp_value@>@ get_array();` (4)
+13. `array<mp_value@>@ get_array();` (4)
 14. `mp_map@ get_map();` (4)
 15. `mp_ext@ get_ext();`
 
@@ -323,7 +323,7 @@ As with **set_pair**, a null value handle is automatically converted to the nil 
 Set methods with named types, rather than mere deduction based on their second argument.
 
 1. `void set_nil(string key);` (1)
-2. `void set_array(string key, array < const mp_value@ > & v);` (2)
+2. `void set_array(string key, array < mp_value@ > & v);` (2)
 3. `void set_map(string key, mp_map& v);` (2)
 4. `void set_ext(string key, mp_ext& v);` (2)
 5. `void set_string(string key, string v);` (3)
@@ -605,7 +605,7 @@ This method guesses the type via a full set of overloads, just as `mp_map.set` d
 Write methods with named types, rather than mere deduction based on their argument.
 
 1. `void write_nil();` (1)
-2. `void write_array(array < const mp_value@ > & v);` (2)
+2. `void write_array(array <mp_value@>& v);` (2)
 3. `void write_map(mp_map& v);` (2)
 4. `void write_ext(mp_ext& v);` (2)
 5. `void write_string(string v);` (3)
