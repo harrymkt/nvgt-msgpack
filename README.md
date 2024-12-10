@@ -14,6 +14,7 @@ This library defines the following.
 - An **mp_decoder** object (referred to as an unpacker in other implementations) which deserializes msgpack data fed to it into **mp_value** objects.
 - An **mp_encoder** object (referred to as a packer in other implementations) which serializes **mp_value** objects into msgpack streams.
 - Various enumerations useful when interacting with msgpack streams, of which the most important for users are **mp_type** and **mp_decoder_state**, listed below.
+- Some convenience functions to avoid the need to work with encoder and decoder objects in the simplest of cases, that being when none of the streaming features are needed and the data is almost certainly valid and complete.
 
 For deserialization, the typical usage pattern would be to instantiate an **mp_decoder**, passing the msgpack data to be deserialized to its constructor and possibly one or more later calls to `mp_decoder.push`. Then a loop that repeatedly calls `mp_decoder.try_read_value()`, checks its state, and when ready calls `mp_decoder.get_value()` would iterate through all the values stored in the msgpack stream, until you ran out of data to read.
 
@@ -31,7 +32,7 @@ This enumeration stores all possible types that msgpack is capable of representi
 - **MPT_FLOAT**: A floating point value, stored as either single-precision (NVGT's float) or double-precision (NVGT's double). Getting to the other type is possible, but note that getting from a represented double to an internal float is liable to lose precision, whereas the reverse is not true. Serializers may choose to convert a double to a float to save 4 bytes, and this one does, but only if it will incur no loss of precision.
 - **MPT_STRING**: A text string. Importantly, according to the version 2 specification, all values of this type should be encoded in valid UTF-8, I.E. this is not for storing arbitrary bytes. Maps to NVGT's string type, where this constraint is not enforced, NVGT strings may contain arbitrary bytes.
 - **MPT_BIN**: A binary string (bytestring). Designed for serializing binary data rather than text. Correct usage of this and the above string type for their respective purposes is crutial to interoperability with other msgpack libraries and any defined schema applications may use. Also maps to NVGT's string type.
-- **MPT_ARRAY**: An array, also called a list in some languages, functionally equivalent to JSON's array type. Stores a series of values accessed by an index in a well-defined order. Like JSON, arrays need not be homogeneous, I.E. an array can contain any combination of values within it. Maps to an array of value handles (`array<mp_value@>`) in NVGT.
+- **MPT_ARRAY**: An array, also called a list in some languages, functionally equivalent to JSON's array type. Stores a series of values accessed by an index in a well-defined order. Like JSON, arrays need not be homogeneous, I.E. an array can contain any combination of values within it. Maps to an array of value handles (`mp_value@[]`) in NVGT.
 - **MPT_MAP**: A mapping, also called a dictionary or dict, similar to JSON's object type. Associates keys with values. Maps to `mp_map` objects in NVGT. NVGT dictionaries allow only strings as keys, and for API compatibility and ease of use this is preserved in this library's map object. Msgpack itself places no constraints on keys, including the existence of duplicate keys, but many libraries require these types be easily hashable and that there are no duplicates. This library will silently coerce integer, float, boolean, and nil values to string representations to allow loading such data if not in strict mode, and will always coerce bin types, but note that this adds the potential of coerced values ending up as duplicate keys, at which point the original value may be lost. If you attempt to deserialize a dictionary which stores array, map, or extension types as keys, an exception will be thrown and this map cannot be deserialized. The same is true in other implementations.
 - **MPT_EXT**: A msgpack-specific type, representing a tuple of an int8 indicating a specific extension type, and a bytestring representing the payload. Per the specification, extension types with a value less than 0 are strictly reserved for the msgpack specification itself to define, leaving the user with the available values 0-127. Each application may register their own extension types and deal with them as they desire, any of these are defined to be application-specific. Maps to `mp_ext` objects in NVGT.
 - **MPT_UNDETERMINED**: Type is not known yet. Should never actually occur, is used merely as a placeholder in internal bookkeeping. If it does occur anywhere, expect at best a thrown exception, at worst undefined behavior.
@@ -48,6 +49,91 @@ This enumeration stores all possible states of an **mp_decoder**, as returned by
 - **MPDS_END_DATA**: The stream ran out of bytes directly upon atempting to read a format byte, potentially indicating that the stream is finished. This is not necessarily the case, however, chunked input could simply have terminated on a value boundary by chance. If you know there is more data, push and read format again. If you know that is all the data, you are finished decoding this stream. It is advised you call `mp_decoder.reset()` to clear its internal buffers.
 - **MPDS_INVALID**: An invalid condition has occurred, and/or the stream is malformed. The decoder is now jammed and no further operations on it will succeed. Resetting it is your only option.
 - **MPDS_INVALID_OPERATION**: This is returned if you attempt to call the wrong method for the current state, but causes no actual state transition.
+
+# Functions
+The functions provided here are convenience methods that allow you to avoid having to manage encoder and decoder instances, should you know that you have the complete stream of data for decoding or the complete set of values for encoding beforehand.
+
+## mp_dumps
+Serialize the given value object to a string and return it in one step.
+```
+string mp_dumps(mp_value@ v, bool sort_map_keys = false, bool strict_map_keys=true, uint max_recursion = 100);
+```
+
+### Arguments
+
+- `mp_value@ v`: The value to serialize.
+- `bool sort_map_keys`: Whether the serialized representation of a map should be sorted, with its pairs in the order given by the sorting of its keys. Defaults to false.
+- `bool strict_map_keys`: Whether the keys of maps should be constrained to the str and bin types (strict key mode). Defaults to true.
+- `uint max_recursion`: The maximum recursion depth, the highest allowed level of nesting of arrays and maps. Defaults to 100.
+
+### Returns
+`string`: The serialized representation of the given value.
+
+### Remarks
+This function is a shortcut for creating an encoder instance to handle a single value. If you wish, the output of successive calls of this function may be concatenated to form a valid msgpack stream, but see `dumps_chain` for a more efficient way of doing that. The null handle will be serialized as the nil value thanks to the encoder's `write_value` method.
+
+See the remarks of the encoder's constructor and `write_value` methods for the other arguments.
+
+## mp_dumps_chain
+Serialize the given list of value objects to a msgpack stream and return the complete contents as a string.
+```
+string mp_dumps_chain(mp_value@[]& v, bool sort_map_keys = false, bool strict_map_keys = true, uint max_recursion = 100);
+```
+
+### Arguments
+
+- `mp_value@[]& v`: An array of value handles representing the values to be serialized.
+- `bool sort_map_keys`: Whether the serialized representation of a map should be sorted, with its pairs in the order given by the sorting of its keys. Defaults to false.
+- `bool strict_map_keys`: Whether the keys of maps should be constrained to the str and bin types (strict key mode). Defaults to true.
+- `uint max_recursion`: The maximum recursion depth, the highest allowed level of nesting of arrays and maps. Defaults to 100.
+
+### Returns
+`string`: The msgpack stream formed by writing all of these values in the order given by the passed array.
+
+### Remarks
+This function is a shortcut for creating an encoder instance to handle multiple values all known ahead of time. Unlike passing a value of type array to `dumps`, the array here is not serialized as a msgpack array. Rather it operates by calling the temporary encoder's `write_value` method on each array item successively, producing a stream of values. Any null handles in the array will be serialized as the nil value thanks to the encoder's `write_value` method.
+
+See the remarks of the encoder's constructor and `write_value` methods for the other arguments.
+
+## mp_loads
+Deserialize a value from a string containing a complete representation of a single value.
+```
+mp_value@ mp_loads(string data);
+```
+
+### Arguments
+
+- `string data`: The msgpack representation of the value you wish to deserialize.
+- `bool strict_map_keys`: whether all map keys should be further constrained to be of the str or bin types (strict key mode). Defaults to true.
+- `uint max_recursion`: The maximum recursion depth, the highest allowed level of nesting of arrays and maps. Defaults to 100.
+
+### Returns
+`mp_value@`: A loaded value object if deserialization was successful, or null if an error occurred.
+
+### Remarks
+This function is a shortcut for creating a decoder to deserialize a single value. The returned value will be null if any state other than **MPDS_READ** occurs in the temporary decoder after calling `try_read_value`, including if any exception is thrown. Any thrown exception will be swallowed by this function and does not propagate to the caller. If the passed string contains more than one serialized value, only the first will be returned, and the rest will be silently discarded. See `loads_chain` for a function for such a case.
+
+See the remarks for the decoder's constructor for the other arguments.
+
+## mp_loads_chain
+Deserialize a stream of values from a string containing any number of complete serialized values.
+```
+mp_value@[]@ mp_loads_chain(string data, bool strict_map_keys = true, uint max_recursion = 100);
+```
+
+### Arguments
+
+- `string data`: The msgpack representation of the stream of values you wish to deserialize.
+- `bool strict_map_keys`: whether all map keys should be further constrained to be of the str or bin types (strict key mode). Defaults to true.
+- `uint max_recursion`: The maximum recursion depth, the highest allowed level of nesting of arrays and maps. Defaults to 100.
+
+### Returns
+`mp_value@[]@`: A handle to an array containing all values that were able to be deserialized successfully.
+
+### Remarks
+This function is a shortcut for creating a decoder to deserialize a stream of values, if you know for a fact that you have the complete stream available at once. It will repeatedly call `try_read_value` and `get_value` on the temporary decoder as long as the states will let it, and will return upon the first error or other state transition it encounters. Any incomplete values (ones that result in **MPDS_MORE_DATA**) will cause the function to stop immediately, as will the invalid state and any exceptions thrown. When it returns, the list of values obtained up to that point will be returned, or an empty array if not even one value could be deserialized successfully. Any exceptions are swallowed by this function and do not propagate to the caller, and the returned array will never be null.
+
+See the remarks for the decoder's constructor for the other arguments.
 
 # Classes
 ## mp_value
@@ -66,7 +152,7 @@ If you wish to support serialization and deserialization of your own custom obje
 | `mp_value(float)` | Wraps the float primitive. |
 | `mp_value(double)` | Wraps the double primitive. | (1) |
 | `mp_value(string, bool is_bin = false)` | Wraps the string primitive. | (2) |
-| `mp_value(array<mp_value@>&)` | Wraps an aray of value types into the msgpack array type. | (3) |
+| `mp_value(mp_value@[]&)` | Wraps an aray of value types into the msgpack array type. | (3) |
 | `mp_value(mp_map&)` | Wraps a map object into the msgpack map type. | (3) |
 | `mp_value(mp_ext&)` | Wraps an ext object into the msgpack extension type. | (4) |
 | `mp_value(integer)` | Wraps any of the primitive integer types (u)int8/16/32/64. | (5) |
@@ -103,7 +189,7 @@ Type-specific get methods, the explicit way to get that type from a value.
 10. `int16 get_int16();` (3)
 11. `uint8 get_uint8();` (3)
 12. `int8 get_int8();` (3)
-13. `array<mp_value@>@ get_array();` (4)
+13. `mp_value@[]@ get_array();` (4)
 14. `mp_map@ get_map();` (4)
 15. `mp_ext@ get_ext();`
 
@@ -222,7 +308,7 @@ The map object attempts as best it can to mirror the dictionary API (including m
 - `void set(string key ? val);`
 
 ##### Remarks
-The '?' argument type used in **get** and **set** is not truly capable of supporting any type of object, as dictionary is. Instead, it is constrained to the types of objects that value objects can hold. That is `bool`, `float`, `double`, `string`, `(u)int8/16/32/64`, `array<mp_value@>`, `mp_map`, and `mp_ext`.  
+The '?' argument type used in **get** and **set** is not truly capable of supporting any type of object, as dictionary is. Instead, it is constrained to the types of objects that value objects can hold. That is `bool`, `float`, `double`, `string`, `(u)int8/16/32/64`, `mp_value@[]`, `mp_map`, and `mp_ext`.  
 Furthermore, when getting to the array, map and ext types, the type to store the result in MUST be a handle, and should be passed to the get function including the `@`. That is something like the following.
 ```
 // assume we have some map called m, containing another map under the key submap. Getting it must be done like this.
@@ -299,7 +385,7 @@ array < array < mp_value@ >> @ get_pairs(bool sort_keys = false);
 - `bool sort_keys`: Whether the keys should have their coerced strings sorted lexicographically. Defaults to false, which returns them in whatever order the underlying dictionary chooses.
 
 ##### Returns
-`array<array<mp_value@>>@`: A handle to a 2d array, with each subarray containing two items, the key and the value.
+`mp_value@[][]@`: A handle to a 2d array, with each subarray containing two items, the key and the value.
 
 ##### Remarks
 The key sorting provided here is useful for equality checking and checksums, as dictionaries, and thus maps, are inherently unordered. As it sorts the string representations of keys, there is no guarantee that it will sort the same as some other implementation or language's sorting, which may handle non-string types differently. Modifying this array will not result in any modifications to the map it came from, the handle type is merely intended to avoid extra copying.  
@@ -358,7 +444,7 @@ Note that decoding is a multi-step process due to the fact that msgpack streams 
 ### Constructor
 Create a decoder ready for use, with optional initial data to pass right away.
 ```
-mp_decoder(string initial, bool fixed_length = false, bool strict_map_keys = true, uint max_recursion = 100);
+mp_decoder(string initial = "", bool fixed_length = false, bool strict_map_keys = true, uint max_recursion = 100);
 ```
 
 #### Arguments
@@ -596,7 +682,7 @@ void write(? v);
 
 ##### Arguments
 
-- `? v`: An argument of type `bool`, `float`, `double`, `string`, `(u)int8/16/32/64`, `array<mp_value@>`, `mp_map`, or `mp_ext`. This is the value to be serialized.
+- `? v`: An argument of type `bool`, `float`, `double`, `string`, `(u)int8/16/32/64`, `mp_value@[]`, `mp_map`, or `mp_ext`. This is the value to be serialized.
 
 ##### Remarks
 This method guesses the type via a full set of overloads, just as `mp_map.set` does, and internally calls `write_value(@value(v))`.
@@ -678,91 +764,6 @@ The following properties are defined which map directly to the underlying stream
 - `bool eof;`
 - `int64 rpos;`
 - `int64 wpos;`
-
-# Functions
-The functions provided here are convenience methods that allow you to avoid having to manage encoder and decoder instances, should you know that you have the complete stream of data for decoding or the complete set of values for encoding beforehand.
-
-## mp_dumps
-Serialize the given value object to a string and return it in one step.
-```
-string mp_dumps(mp_value@ v, bool sort_map_keys = false, bool strict_map_keys=true, uint max_recursion = 100);
-```
-
-### Arguments
-
-- `mp_value@ v`: The value to serialize.
-- `bool sort_map_keys`: Whether the serialized representation of a map should be sorted, with its pairs in the order given by the sorting of its keys. Defaults to false.
-- `bool strict_map_keys`: Whether the keys of maps should be constrained to the str and bin types (strict key mode). Defaults to true.
-- `uint max_recursion`: The maximum recursion depth, the highest allowed level of nesting of arrays and maps. Defaults to 100.
-
-### Returns
-`string`: The serialized representation of the given value.
-
-### Remarks
-This function is a shortcut for creating an encoder instance to handle a single value. If you wish, the output of successive calls of this function may be concatenated to form a valid msgpack stream, but see `dumps_chain` for a more efficient way of doing that. The null handle will be serialized as the nil value thanks to the encoder's `write_value` method.
-
-See the remarks of the encoder's constructor and `write_value` methods for the other arguments.
-
-## mp_dumps_chain
-Serialize the given list of value objects to a msgpack stream and return the complete contents as a string.
-```
-string mp_dumps_chain(array<mp_value@>& v, bool sort_map_keys = false, bool strict_map_keys = true, uint max_recursion = 100);
-```
-
-### Arguments
-
-- `array<mp_value@>& v`: An array of value handles representing the values to be serialized.
-- `bool sort_map_keys`: Whether the serialized representation of a map should be sorted, with its pairs in the order given by the sorting of its keys. Defaults to false.
-- `bool strict_map_keys`: Whether the keys of maps should be constrained to the str and bin types (strict key mode). Defaults to true.
-- `uint max_recursion`: The maximum recursion depth, the highest allowed level of nesting of arrays and maps. Defaults to 100.
-
-### Returns
-`string`: The msgpack stream formed by writing all of these values in the order given by the passed array.
-
-### Remarks
-This function is a shortcut for creating an encoder instance to handle multiple values all known ahead of time. Unlike passing a value of type array to `dumps`, the array here is not serialized as a msgpack array. Rather it operates by calling the temporary encoder's `write_value` method on each array item successively, producing a stream of values. Any null handles in the array will be serialized as the nil value thanks to the encoder's `write_value` method.
-
-See the remarks of the encoder's constructor and `write_value` methods for the other arguments.
-
-## mp_loads
-Deserialize a value from a string containing a complete representation of a single value.
-```
-mp_value@ mp_loads(string data);
-```
-
-### Arguments
-
-- `string data`: The msgpack representation of the value you wish to deserialize.
-- `bool strict_map_keys`: whether all map keys should be further constrained to be of the str or bin types (strict key mode). Defaults to true.
-- `uint max_recursion`: The maximum recursion depth, the highest allowed level of nesting of arrays and maps. Defaults to 100.
-
-### Returns
-`mp_value@`: A loaded value object if deserialization was successful, or null if an error occurred.
-
-### Remarks
-This function is a shortcut for creating a decoder to deserialize a single value. The returned value will be null if any state other than **MPDS_READ** occurs in the temporary decoder after calling `try_read_value`, including if any exception is thrown. Any thrown exception will be swallowed by this function and does not propagate to the caller. If the passed string contains more than one serialized value, only the first will be returned, and the rest will be silently discarded. See `loads_chain` for a function for such a case.
-
-See the remarks for the decoder's constructor for the other arguments.
-
-## mp_loads_chain
-Deserialize a stream of values from a string containing any number of complete serialized values.
-```
-array<mp_value@>@ mp_loads_chain(string data, bool strict_map_keys = true, uint max_recursion = 100);
-```
-
-### Arguments
-
-- `string data`: The msgpack representation of the stream of values you wish to deserialize.
-- `bool strict_map_keys`: whether all map keys should be further constrained to be of the str or bin types (strict key mode). Defaults to true.
-- `uint max_recursion`: The maximum recursion depth, the highest allowed level of nesting of arrays and maps. Defaults to 100.
-
-### Returns
-`array<mp_value@>@`: A handle to an array containing all values that were able to be deserialized successfully.
-
-### Remarks
-This function is a shortcut for creating a decoder to deserialize a stream of values, if you know for a fact that you have the complete stream available at once. It will repeatedly call `try_read_value` and `get_value` on the temporary decoder as long as the states will let it, and will return upon the first error or other state transition it encounters. Any incomplete values (ones that result in **MPDS_MORE_DATA**) will cause the function to stop immediately, as will the invalid state and any exceptions thrown. When it returns, the list of values obtained up to that point will be returned, or an empty array if not even one value could be deserialized successfully. Any exceptions are swallowed by this function and do not propagate to the caller, and the returned array will never be null.
-
-See the remarks for the decoder's constructor for the other arguments.
 
 # Debug Mode
 The file debug.patch is provided to enable debug statements in the library when applied. Use `git apply debug.patch` to enable it and `git apply -R debug.patch` to disable it.
