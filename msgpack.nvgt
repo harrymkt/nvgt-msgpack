@@ -811,6 +811,7 @@ class mp_value {
 
 	// let's allow equality comparison of two values
 	bool opEquals(mp_value@ other) const {
+		if(other is null) return false; // no populated value can be equal to the null handle
 		if (this is other) return true; // trivial
 
 		if (this.itype == other.type && this.format == other.format) {
@@ -925,7 +926,7 @@ class mp_ext {
 
 	// no implicit casts in this direction
 
-	bool opEquals(mp_ext@ other) {
+	bool opEquals(mp_ext@ other) const {
 		return (this is other) || (other !is null && this.itype == other.type && this.idata == other.data);
 	}
 }
@@ -968,8 +969,9 @@ class mp_timestamp {
 	// constructors
 	// from an ext instance, parses the three msgpack timestamp formats
 	mp_timestamp(mp_ext &in v) {
-		if (v.type != MP_EXT_TIMESTAMP) throw(MP_TYPE_MISMATCH_EXCEPTION);
-
+		if (v.type != MP_EXT_TIMESTAMP)
+			throw(MP_TYPE_MISMATCH_EXCEPTION);
+		
 		string data = v.data;
 		// deserialization procedure adapted from the spec
 		datastream ds(data,"",STREAM_BYTE_ORDER_NETWORK);
@@ -999,7 +1001,7 @@ class mp_timestamp {
 	mp_timestamp(int64 seconds, uint nanoseconds) {
 		if (nanoseconds > 999999999)
 			throw("msgpack invalid timestamp, nanoseconds must be in the range 0..999999999");
-
+		
 		this.secs = seconds;
 		this.nsecs = nanoseconds;
 	}
@@ -1044,19 +1046,20 @@ class mp_timestamp {
 		return mp_ext(MP_EXT_TIMESTAMP, this.make_data());
 	}
 
-	mp_ext opConv() {
+	mp_ext opConv() const {
 		return mp_ext(MP_EXT_TIMESTAMP, this.make_data());
 	}
 
-	mp_ext opImplConv() {
+	mp_ext opImplConv() const {
 		return mp_ext(MP_EXT_TIMESTAMP, this.make_data());
 	}
 
-	timestamp opConv() {
+	timestamp opConv() const {
 		return timestamp(this.as_microseconds());
 	}
 
-	bool opEquals(mp_ext@ other) {
+	bool opEquals(mp_ext@ other) const {
+		if(other is null) return false; // same as mp_value
 		if (this is other) return true;
 		else if (other !is null && other.type == MP_EXT_TIMESTAMP) {
 			mp_timestamp ts(other);
@@ -1064,13 +1067,13 @@ class mp_timestamp {
 		} else return false;
 	}
 
-	int opCmp(mp_timestamp& other) {
+	int opCmp(mp_timestamp& other) const {
 		if (other.seconds == this.secs)
 			return (other.nanoseconds == this.nsecs ? 0 : other.nanoseconds < this.nsecs ? -1 : 1);
 		else return (other.seconds < this.secs ? -1 : 1);
 	}
 
-	int opCmp(timestamp& other) {
+	int opCmp(timestamp& other) const {
 		return this.opCmp(mp_timestamp(other));
 	}
 }
@@ -1158,6 +1161,18 @@ class mp_map {
 			ret.insert_last(temp);
 		}
 		return ret;
+	}
+
+	// check for exact key match, not merely string coersion match
+	// if this returns true, then get(string(key)) should return the value you expect
+	bool has_key(mp_value@ key) const {
+		if(key is null) @key = mp_value();
+		const string keystring = string(key);
+		mp_value@ stored;
+		if(kdict.get(keystring, @stored)) {
+			return stored == key;
+		}
+		else return false;
 	}
 
 	// now get and set, which internally wrap everything with a value type
@@ -1473,7 +1488,8 @@ class mp_map {
 	}
 
 	// as maps can be stored inside values, we need equality testing here
-	bool opEquals(mp_map@ other) {
+	bool opEquals(mp_map@ other) const {
+		if(other is null) return false; // same as value
 		if (this is other) return true; // trivial
 
 		// try a few shortcuts to bale out early before having to do full, deep comparison

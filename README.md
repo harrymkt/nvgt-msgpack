@@ -216,11 +216,11 @@ const int format;
 ```
 
 ### Supported Operations
-Value objects support equality comparison (`==`), which compares recursively by value.
+Value objects support equality comparison (`==`), which compares recursively by type, format and value. Importantly, this means that due to the type not matching, an integer value will never compare equal to a float value even if they are numerically equal, and likewise a string value will never compare equal to a bin value even if they have the same contents.
 
 Value objects support implicit and explicit conversion to `bool`, `float`, `double`, `string`, (u)int8/16/32/64, `mp_value@[]`, `mp_map`, and `mp_ext`. They also support implicit and explicit casting to `mp_value@[]@`, `mp_map@`, and `mp_ext@`. In the case of casting to the wrong type, the cast will simply return null, standard for an invalid cast, rather than the type mismatch exception being thrown.
 
-In the case of implicit or explicit conversion to string, all but array, map, and ext are supported. The others will yield a string representation suitable for their format. String and bin will be represented as-is, Floating point types will be stringified from double, integers will be stringified as uint64 or int64 depending on their sign, booleans will be represented by the strings "true" or "false", and nil will be represented by the string "null". Attempting to convert an array, map or ext to string will throw the type mismatch exception.
+In the case of implicit or explicit conversion to string, all but array, map, and ext are supported. The others will yield a string representation suitable for their format. String and bin will be represented as-is, Floating point types will be stringified from double, integers will be stringified from uint64 or int64 depending on their sign, booleans will be represented by the strings "true" or "false", and nil will be represented by the string "null". Attempting to convert an array, map or ext to string will throw the type mismatch exception.
 
 ## mp_ext
 An mp_ext object is used to represent msgpack extension types, which are a tuple of an 8-bit signed integer (the type code) and a byte string (the data payload).
@@ -428,14 +428,33 @@ Set methods with named types, rather than mere deduction based on their second a
 
 ##### Notes
 
-1. Only set method that takes no value argument, as it simply maps that key to a nil value. Equivalent to `mp_map.set(key, null);` which itself is equivalent to `mp_map.set(key, @value());`. Provided to be more explicit and easier to read.
+1. Only set method that takes no value argument, as it simply maps that key to a nil value. Equivalent to `mp_map.set(key, null);` which itself is equivalent to `mp_map.set(key, @mp_value());`. Provided to be more explicit and easier to read.
 2. As with value constructors, required to be a reference so you cannot pass null. Tracking mutations is not guaranteed.
 3. Stores value as the text (str) type.
-4. Stores value as the binary (bin) type. Equivalent to `mp_map.set(key, @value(v, true));`. Provided to be more explicit and easier to read.
+4. Stores value as the binary (bin) type. Equivalent to `mp_map.set(key, @mp_value(v, true));`. Provided to be more explicit and easier to read.
 5. Unlike the overloaded set method, which will take your variable type as-is and convert based on that, these methods will coerce your variable to the type of the argument and work based on that. The same size and sign conversions apply.
 
 ##### Remarks
 These methods are for setting types explicitly rather than using the automatic conversion presented by the regular overloaded set method, and without requiring you to use the bare value methods. That conversion is done internally. They are provided for convenience, and internally map to calling the above set method with a string key and bare value created from the v argument.
+
+#### has_key
+Checks if the map contains the given key, with a stronger equality guarantee on the key.
+```
+bool has_key(mp_value@ key);
+```
+
+##### Arguments
+
+- `mp_value@ key`: The key to look up
+
+##### Returns
+`bool`: True if this key is in the map, false otherwise.
+
+##### Remarks
+This method functions similarly to `exists`, but whereas `exists` will return true if the given string key is found in the map, `has_key` will only return true if the key found under that string coersion is equal to the passed key. Thus it may return false where `exists` would return true, because the raw values do not agree. This method is useful for validation and to detect string collisions.
+
+### Supported Operations
+Map objects support equality comparison (`==`), which compares recursively by contents. Importantly this applies to the bare types of keys as well, not their string coersion. Two maps will only compare equal if every detail of their keys and values agree.
 
 ## mp_decoder
 An mp_decoder object reads data from a msgpack stream and yields deserialized values obtained from that data in the form of value objects.  
