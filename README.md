@@ -218,7 +218,7 @@ const int format;
 ### Supported Operations
 Value objects support equality comparison (`==`), which compares recursively by value.
 
-Value objects support implicit and explicit conversion to `bool`, `float`, `double`, `string`, (u)int8/16/32/64, `array<mp_value@>`, `mp_map`, and `mp_ext`. They also support implicit and explicit casting to `array<mp_value@>@`, `mp_map@`, and `mp_ext@`. In the case of casting to the wrong type, the cast will simply return null, standard for an invalid cast, rather than the type mismatch exception being thrown.
+Value objects support implicit and explicit conversion to `bool`, `float`, `double`, `string`, (u)int8/16/32/64, `mp_value@[]`, `mp_map`, and `mp_ext`. They also support implicit and explicit casting to `mp_value@[]@`, `mp_map@`, and `mp_ext@`. In the case of casting to the wrong type, the cast will simply return null, standard for an invalid cast, rather than the type mismatch exception being thrown.
 
 In the case of implicit or explicit conversion to string, all but array, map, and ext are supported. The others will yield a string representation suitable for their format. String and bin will be represented as-is, Floating point types will be stringified from double, integers will be stringified as uint64 or int64 depending on their sign, booleans will be represented by the strings "true" or "false", and nil will be represented by the string "null". Attempting to convert an array, map or ext to string will throw the type mismatch exception.
 
@@ -377,7 +377,7 @@ Null handles are automatically converted to nil values for storage, and this is 
 #### get_pairs
 Expresses the map as a 2d array of key/value pairs, with optional sorting.
 ```
-array < array < mp_value@ >> @ get_pairs(bool sort_keys = false);
+mp_value@[][]@ get_pairs(bool sort_keys = false);
 ```
 
 ##### Arguments
@@ -409,7 +409,7 @@ As with **set_pair**, a null value handle is automatically converted to the nil 
 Set methods with named types, rather than mere deduction based on their second argument.
 
 1. `void set_nil(string key);` (1)
-2. `void set_array(string key, array < mp_value@ > & v);` (2)
+2. `void set_array(string key, mp_value@[] & v);` (2)
 3. `void set_map(string key, mp_map& v);` (2)
 4. `void set_ext(string key, mp_ext& v);` (2)
 5. `void set_string(string key, string v);` (3)
@@ -691,7 +691,7 @@ This method guesses the type via a full set of overloads, just as `mp_map.set` d
 Write methods with named types, rather than mere deduction based on their argument.
 
 1. `void write_nil();` (1)
-2. `void write_array(array <mp_value@>& v);` (2)
+2. `void write_array(mp_value@[]& v);` (2)
 3. `void write_map(mp_map& v);` (2)
 4. `void write_ext(mp_ext& v);` (2)
 5. `void write_string(string v);` (3)
@@ -773,3 +773,12 @@ This debug mode is designed for testing and development of the msgpack library i
 If you spot any bugs in the library and/or documentation, or places where things could be improved, issues and pull requests are welcome.
 
 The formatting used here is an attempt to conform to NVGT's code style, which itself is sort of enforced by Artistic Style using a config that comes with the NVGT repository. The changes I make to that style are removal of excessive blank lines in the middle of methods, removal of padding of the angle brackets used to denote the templated array type, and removal of any spaces between the name and opening parenthesis of the throw function. This formatting is subject to change slightly if better methods are discovered, but tabs are still to be used for indentation.
+
+Any contribution must keep the file debug.patch able to be applied with it in order to be merged. If the pull request does not do so itself, I will attempt to do so.
+This means that the best way of working on the library is to put it into debug mode first and then make your changes on top of that, adding new debug statements as necesary, and finally before merging strip those debug statements and update the patch.
+
+The script debugstrip.py has been provided to aid with this once debug.patch no longer cleanly reverts, which will strip all lines containing dbgout and everything after the marker `/// BEGIN DEBUG ///`. The result of this should be diffed against the prior version to provide a new debug.patch, using a command similar to the following, assuming both are committed at least temporarily.
+```
+git diff --binary --histogram --output=debug.patch HEAD HEAD~
+```
+The resulting debug.patch should then be committed. Due to this noise in the history, if temporary branches are not used pull requests may be squash merged.

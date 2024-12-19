@@ -1,5 +1,4 @@
 /* msgpack.nvgt - fully-featured pure-NVGT msgpack serialization/deserialization library
-* version 1.0
 *
 * Copyright (C) 2024 Colton Hill
 *
@@ -211,7 +210,7 @@ class mp_value {
 			// something special here, the arrays and maps stored by this might have been mutated!
 			// to avoid re-wrapping, just recalculate format based on them
 			if (this.itype == MPT_ARRAY) {
-				array<mp_value@>@ v = this.get_array();
+				mp_value@[]@ v = this.get_array();
 				if (v.length() > 0xFFFFFFFF) throw("msgpack array too big to encode");
 				int format = 0;
 				uint len = v.length();
@@ -404,9 +403,9 @@ class mp_value {
 	}
 
 	// this can't be mp_value@[]@, else you get an immutable handle, and you actually want to modify it
-	array<mp_value@>@ get_array(bool needs_throw = true) const {
+	mp_value@[]@ get_array(bool needs_throw = true) const {
 		if (this.itype == MPT_ARRAY) {
-			array<mp_value@>@ ret;
+			mp_value@[]@ ret;
 			content.retrieve(@ret);
 			return ret;
 		}
@@ -527,19 +526,19 @@ class mp_value {
 		return this.get_int8();
 	}
 
-	array<mp_value@>@ opImplCast() {
+	mp_value@[]@ opImplCast() {
 		return this.get_array(true);
 	}
 
-	array<mp_value@>@ opCast() {
+	mp_value@[]@ opCast() {
 		return this.get_array(true);
 	}
 
-	array < mp_value@ > opImplConv() {
+	mp_value@[] opImplConv() {
 		return this.get_array();
 	}
 
-	array < mp_value@ > opConv() {
+	mp_value@[] opConv() {
 		return this.get_array();
 	}
 
@@ -734,7 +733,7 @@ class mp_value {
 		this.init((is_bin ? MPT_BIN : MPT_STRING), format, any(v));
 	}
 
-	mp_value(array < mp_value@ > & v) {
+	mp_value(mp_value@[] & v) {
 		// ref not handle so can't be null
 		if (v.length() > 0xFFFFFFFF) throw("msgpack array too big to encode");
 
@@ -848,8 +847,8 @@ class mp_value {
 			break;
 
 			case MPT_ARRAY: {
-				array<mp_value@>@ thisarray = this.get_array();
-				array<mp_value@>@ otherarray = other.get_array();
+				mp_value@[]@ thisarray = this.get_array();
+				mp_value@[]@ otherarray = other.get_array();
 				return thisarray == otherarray;
 			}
 			break;
@@ -1145,8 +1144,8 @@ class mp_map {
 	// we do not support serialize this way, pass it to an encoder
 	// however, here's an internally useful method for encoding
 	// yields pairs of value objects corresponding to how they should be serialized
-	array < array < mp_value@ >> @ get_pairs(bool sort_keys = false) const {
-		array < array < mp_value@ >> ret;
+	mp_value@[][] @ get_pairs(bool sort_keys = false) const {
+		mp_value@[][] ret;
 		string[]@ keys = idict.get_keys();
 		if (sort_keys) keys.sort_ascending();
 
@@ -1155,7 +1154,7 @@ class mp_map {
 			mp_value@ k = null, v = null;
 			kdict.get(keys[i], @k);
 			idict.get(keys[i], @v);
-			array < mp_value@ > temp = {k, v};
+			mp_value@[] temp = {k, v};
 			ret.insert_last(temp);
 		}
 		return ret;
@@ -1177,7 +1176,7 @@ class mp_map {
 	// these require existing get convention so I can return false, but automatically convert the value to the right type
 	// in this case, false means either key does not exist or conversion is impossible
 	// this done to abstract the value layer somewhat
-	bool get(const string &in key, array<mp_value@>@ &out outval) const {
+	bool get(const string &in key, mp_value@[]@ &out outval) const {
 		mp_value@ val = this.get(key);
 		if (val !is null && val.type == MPT_ARRAY) {
 			@outval = val.get_array();
@@ -1338,7 +1337,7 @@ class mp_map {
 		this.set(key, null);
 	}
 
-	void set_array(const string &in key, array < mp_value@ > & v) {
+	void set_array(const string &in key, mp_value@[] & v) {
 		this.set(key, @mp_value(v));
 	}
 
@@ -1413,7 +1412,7 @@ class mp_map {
 	}
 
 	// and now, type choosing functions, which just call the corresponding specific one
-	void set(const string &in key, array < mp_value@ > & v) {
+	void set(const string &in key, mp_value@[] & v) {
 		this.set_array(key, v);
 	}
 
@@ -1490,8 +1489,8 @@ class mp_map {
 					// we finally have to compare value by value
 					// this includes the value types for the keys as well!
 					// as such, leverage get_pairs, which supports key sorting for this reason
-					array < array < mp_value@ >> @ thispairs = this.get_pairs(true);
-					array < array < mp_value@ >> @ otherpairs = other.get_pairs(true);
+					mp_value@[][] @ thispairs = this.get_pairs(true);
+					mp_value@[][] @ otherpairs = other.get_pairs(true);
 					return thispairs == otherpairs; // arrays support equality based on the fact that the value type itself does
 				}
 			}
@@ -1559,7 +1558,7 @@ class mp_decoder {
 			mp_map temp;
 			@cur_map = temp;
 		} else {
-			array < mp_value@ > temp;
+			mp_value@[] temp;
 			temp.reserve(items_to_read);
 			@cur_array = temp;
 		}
@@ -1988,7 +1987,7 @@ class mp_decoder {
 				mp_decoder_state ts = sub_decoder.subdecoder_iterate_read();
 				if (ts == MPDS_READ) {
 					// retrieve that value now from the sub-decoder and destroy it
-					array<mp_value@>@ data = sub_decoder.get_array();
+					mp_value@[]@ data = sub_decoder.get_array();
 					@cur_value = mp_value(cur_type, cur_format, any(data));
 					@sub_decoder = null;
 				}
@@ -2057,13 +2056,13 @@ class mp_decoder {
 	protected bool nested = false; // to be set to true on sub-decoders
 	protected bool is_map = false; // if nested, this indicates if we're reading an array or map
 	protected uint items_to_read = 0; // if nested, this controls the count of items we need to read before we can terminate
-	protected array<mp_value@>@ cur_array = null;
+	protected mp_value@[]@ cur_array = null;
 	protected mp_map@ cur_map = null;
 	protected mp_value@ cur_key = null; // current key to put in the map
 	protected bool is_map_value = false; // if nested and is map, false for key and true for value
 	protected uint recursion_level = 0; // current recursion level
 
-	array<mp_value@>@ get_array() {
+	mp_value@[]@ get_array() {
 		if (nested && !is_map) {
 			if (state == MPDS_READ) return cur_array;
 			else return null;
@@ -2395,7 +2394,7 @@ class mp_encoder {
 		if(recursion_level >= max_recursion) {
 			throw(MP_RECURSION_LIMIT_EXCEPTION);
 		}
-		array<mp_value@>@ a = v.get_array();
+		mp_value@[]@ a = v.get_array();
 		const uint len = a.length();
 		switch (v.format) {
 		case MPF_FIXARRAY: {
@@ -2427,7 +2426,7 @@ class mp_encoder {
 			throw(MP_RECURSION_LIMIT_EXCEPTION);
 		}
 		mp_map@ m = v.get_map();
-		array < array < mp_value@ >> @ p = m.get_pairs(sort_map_keys);
+		mp_value@[][] @ p = m.get_pairs(sort_map_keys);
 		const uint len = p.length();
 		switch (v.format) {
 		case MPF_FIXMAP: {
@@ -2587,7 +2586,7 @@ class mp_encoder {
 		this.encode_value(@mp_value(v, true));
 	}
 
-	void write_array(array < mp_value@ > & v, bool sort_map_keys = false) {
+	void write_array(mp_value@[] & v, bool sort_map_keys = false) {
 		this.encode_value(@mp_value(v), sort_map_keys);
 	}
 
@@ -2661,7 +2660,7 @@ class mp_encoder {
 		this.encode_value(@mp_value(v, is_bin));
 	}
 
-	void write(array < mp_value@ > & v) {
+	void write(mp_value@[] & v) {
 		this.encode_value(@mp_value(v));
 	}
 
@@ -2725,7 +2724,7 @@ const string mp_dumps(mp_value@ v, bool sort_map_keys = false, bool strict_map_k
 }
 
 // dumps_chain, dump a chain (array) of values to a string and return it immediately. Array is not serialized as array.
-const string mp_dumps_chain(array<mp_value@>& v, bool sort_map_keys = false, bool strict_map_keys = true, uint max_recursion = 100) {
+const string mp_dumps_chain(mp_value@[]& v, bool sort_map_keys = false, bool strict_map_keys = true, uint max_recursion = 100) {
 	mp_encoder enc(strict_map_keys, max_recursion);
 	for(uint i = 0; i < v.length(); i++) {
 		enc.write_value(v[i], sort_map_keys);
@@ -2752,8 +2751,8 @@ mp_value@ mp_loads(const string &in data, bool strict_map_keys=true, uint max_re
 }
 
 // load a chain of values until either no more data is available or an error condition occurs
-array<mp_value@>@ mp_loads_chain(const string &in data, bool strict_map_keys=true, uint max_recursion = 100) {
-	array<mp_value@> ret;
+mp_value@[]@ mp_loads_chain(const string &in data, bool strict_map_keys=true, uint max_recursion = 100) {
+	mp_value@[] ret;
 	mp_decoder dec(data, true, strict_map_keys, max_recursion); // fixed-length mode
 	while(dec.get_state() == MPDS_READY) {
 		try {
