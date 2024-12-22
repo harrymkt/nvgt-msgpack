@@ -15,6 +15,7 @@ This library defines the following.
 - An **mp_encoder** object (referred to as a packer in other implementations) which serializes **mp_value** objects into msgpack streams.
 - Various enumerations useful when interacting with msgpack streams, of which the most important for users are **mp_type** and **mp_decoder_state**, listed below.
 - Some convenience functions to avoid the need to work with encoder and decoder objects in the simplest of cases, that being when none of the streaming features are needed and the data is almost certainly valid and complete.
+- Some other useful constants, including common exception strings and known extention type codes.
 
 For deserialization, the typical usage pattern would be to instantiate an **mp_decoder**, passing the msgpack data to be deserialized to its constructor and possibly one or more later calls to `mp_decoder.push`. Then a loop that repeatedly calls `mp_decoder.try_read_value()`, checks its state, and when ready calls `mp_decoder.get_value()` would iterate through all the values stored in the msgpack stream, until you ran out of data to read.
 
@@ -49,6 +50,22 @@ This enumeration stores all possible states of an **mp_decoder**, as returned by
 - **MPDS_END_DATA**: The stream ran out of bytes directly upon atempting to read a format byte, potentially indicating that the stream is finished. This is not necessarily the case, however, chunked input could simply have terminated on a value boundary by chance. If you know there is more data, push and read format again. If you know that is all the data, you are finished decoding this stream. It is advised you call `mp_decoder.reset()` to clear its internal buffers.
 - **MPDS_INVALID**: An invalid condition has occurred, and/or the stream is malformed. The decoder is now jammed and no further operations on it will succeed. Resetting it is your only option.
 - **MPDS_INVALID_OPERATION**: This is returned if you attempt to call the wrong method for the current state, but causes no actual state transition.
+
+# Constants
+The following public constants are a defined part of this API.
+
+## Exceptions
+These string constants are used in throw statements for common cases, making the job of exception checking slightly easier on the caller. Note, however, that not all exception scenarios are covered by these constants, some exceptions are only thrown in one possible case and thus are not defined here.
+All exceptions thrown by this library start with the string "msgpack " to help a little with checking such things, E.G. startswith on the exception string.
+
+- `MP_TYPE_MISMATCH_EXCEPTION`: Thrown when an attempted type conversion is impossible.
+- `MP_INVALID_KEY_TYPE_EXCEPTION`: Thrown when an unsupported key type is encountered when encoding or decoding a map. Whether a given type is supported depends on the setting of strict key mode.
+- `MP_RECURSION_LIMIT_EXCEPTION`: Thrown when the maximum recursion depth is exceeded when encoding or decoding.
+
+## Known Extension Type Codes
+These int8 constants are used as the type code for known extension types, those types for which the library itself defines a conversion beyond ext objects.
+
+- `MP_EXT_TIMESTAMP`: The timestamp type as defined in the msgpack specification, storing seconds and nanoseconds since the unix epoch in 4, 8 or 12 bytes. See `mp_timestamp`.
 
 # Functions
 The functions provided here are convenience methods that allow you to avoid having to manage encoder and decoder instances, should you know that you have the complete stream of data for decoding or the complete set of values for encoding beforehand.
@@ -139,7 +156,7 @@ See the remarks for the decoder's constructor for the other arguments.
 ## mp_value
 Value objects are the basic unit of data in this library, allowing the storage and communication of the complete set of msgpack supported types. All deserialized data, and all data to be serialized, should ultimately be wrapped inside mp_value instances.  
 
-Value objects support automatic conversion to the specified type, but note that attempting to coerce to the wrong type will throw `TYPE_MISMATCH_EXCEPTION`. This conversion may be facilitated by the various `get_*` methods, by calling the type and passing the value, or by leveraging implicit conversion via assignment. This is done to support ease of use, but proper treatment is paramount!
+Value objects support automatic conversion to the specified type, but note that attempting to coerce to the wrong type will throw `MP_TYPE_MISMATCH_EXCEPTION`. This conversion may be facilitated by the various `get_*` methods, by calling the type and passing the value, or by leveraging implicit conversion via assignment. This is done to support ease of use, but proper treatment is paramount!
 
 If you wish to support serialization and deserialization of your own custom objects into msgpack, you should implement the `mp_value@ opImplCast()` and `mp_value@ opCast()` methods to yield serialized values from your objects, and a constructor of the form `obj(mp_value@ v)`, which will allow turning a deserialized value handle back into your object, via whatever semantics you deem necessary. In this form each serialized object should be only a single value, likely an array, map or ext type. It is not advised to serialize your objects as completely independent chains of values, as this makes conversion much harder and runs the potential of not knowing when you have enough data when the chain is broken. Implementing `opConv()` and `opImplConv()` is optional, but may allow slightly less verbose code if you wish to construct values from these yourself, before passing them on.
 
@@ -194,7 +211,7 @@ Type-specific get methods, the explicit way to get that type from a value.
 15. `mp_ext@ get_ext();`
 
 ##### Returns
-The specified type if possible. If not possible, `TYPE_MISMATCH_EXCEPTION` will be thrown.
+The specified type if possible. If not possible, `MP_TYPE_MISMATCH_EXCEPTION` will be thrown.
 
 ##### Notes
 1. This get method is used for both the str and bin types, as the function of these methods is based on the NVGT types they return. The value's type property will determine whether this should be treated as a text or binary string.
