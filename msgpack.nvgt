@@ -1,5 +1,4 @@
 /* msgpack.nvgt - fully-featured pure-NVGT msgpack serialization/deserialization library
-*
 * Copyright (C) 2024 Colton Hill
 *
 *  This software is provided 'as-is', without any express or implied
@@ -898,6 +897,7 @@ class mp_value {
 
 // msgpack extension type
 const int8 MP_EXT_TIMESTAMP = -1; // the specification extension type code for timestamp
+const int8 MP_EXT_VECTOR = 86; // convenience serialization of vector using the ASCII code for 'V'.
 class mp_ext {
 	private string idata;
 	private int8 itype;
@@ -929,6 +929,35 @@ class mp_ext {
 	bool opEquals(mp_ext@ other) const {
 		return (this is other) || (other !is null && this.itype == other.type && this.idata == other.data);
 	}
+	
+	// we're not going to define a wrapper class for this like timestamp, because timestamp behaves slightly differently than the builtin
+	// instead, we must define conversion functions here to interchange with the builtin
+	vector opConv() const {
+		if(itype == MP_EXT_VECTOR && idata.length() == 12) {
+			datastream ds(idata, "", STREAM_BYTE_ORDER_NETWORK);
+			ds.seek(0);
+			float x = ds.read_float();
+			float y = ds.read_float();
+			float z = ds.read_float();
+			ds.close();
+			return vector(x, y, z);
+		}
+		else {
+			throw(MP_TYPE_MISMATCH_EXCEPTION);
+			return vector();
+		}
+	}
+	
+	mp_ext(vector& v) {
+		datastream ds("", "", STREAM_BYTE_ORDER_NETWORK);
+		ds.write_float(v.x);
+		ds.write_float(v.y);
+		ds.write_float(v.z);
+		ds.seek(0);
+		this.idata = ds.read();
+		ds.close();
+		this.itype = MP_EXT_VECTOR;
+	}	
 }
 
 // timestamp, stored as ext type -1

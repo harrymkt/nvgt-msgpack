@@ -66,6 +66,7 @@ All exceptions thrown by this library start with the string "msgpack " to help a
 These int8 constants are used as the type code for known extension types, those types for which the library itself defines a conversion beyond ext objects.
 
 - `MP_EXT_TIMESTAMP`: The timestamp type as defined in the msgpack specification, storing seconds and nanoseconds since the unix epoch in 4, 8 or 12 bytes. See `mp_timestamp`.
+- `MP_EXT_VECTOR`: Msgpack serialization for the NVGT vector type defined by this library. The type code is 86, corresponding to the ASCII letter 'V'. The payload is the three floats concatenated in the order x y z in network byte order.
 
 # Functions
 The functions provided here are convenience methods that allow you to avoid having to manage encoder and decoder instances, should you know that you have the complete stream of data for decoding or the complete set of values for encoding beforehand.
@@ -266,6 +267,10 @@ Ext objects support equality comparison (`==`) which compares by type and data.
 
 An ext object with the type code **MP_EXT_TIMESTAMP** can be cast to an **mp_timestamp** object.
 
+An ext object with the type code **MP_EXT_VECTOR** can be converted to a **vector** object defined by NVGT, using the explicit conversion of the form `vector(ext)`.
+A **vector** object can likewise be implicitly or explicitly converted to an ext object.  
+The serialization of vectors, which is a custom implementation by this library, is achieved by using the type code 86 (ASCII V), and a payload consisting of the three floats (in network byte order) written in the order x y z.
+
 ## mp_timestamp
 A timestamp representing seconds and nanoseconds since the unix epoch (1970-01-01T0:00+0:00) stored as the standard msgpack extension type -1, the constant **EXT_TIMESTAMP**.
 
@@ -303,7 +308,7 @@ const uint nanoseconds;
 ### Supported Operations
 Mp_timestamp objects support equality comparison (`==`) with **mp_ext** objects, and will return not equal if either the time stamps do not match or if the other ext object is not a timestamp. They support relational comparison (`==, !=, <, <=, >, >=`) with **mp_timestamp** and NVGT **timestamp** objects. In the case of comparing with NVGT **timestamp** objects, comparison is made with full nanosecond precision, rather than throwing away nanoseconds to compare at the microsecond level. Thus these objects will not compare equal unless the nanoseconds portion of this timestamp object only stores down to microsecond precision, and has the actual nanoseconds part at 0.
 
-Mp_timestamp objects support explicit conversion to timestamp, and both implicit and explicit casts and conversion to ext objects.
+Mp_timestamp objects support explicit conversion to timestamp in the form `timestamp(obj)`, and both implicit and explicit casts and conversion to ext objects.
 
 ## mp_map
 A map object is similar to a dictionary in function, and is required in order to serialize a key/value store into msgpack, as you cannot encode bare dictionaries.
