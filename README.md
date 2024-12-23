@@ -116,7 +116,7 @@ See the remarks of the encoder's constructor and `write_value` methods for the o
 ## mp_loads
 Deserialize a value from a string containing a complete representation of a single value.
 ```
-mp_value@ mp_loads(string data);
+mp_value@ mp_loads(string data, bool strict_map_keys = true, uint max_recursion = 100);
 ```
 
 ### Arguments
