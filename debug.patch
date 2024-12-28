@@ -1,8 +1,8 @@
 diff --git a/msgpack.nvgt b/msgpack.nvgt
-index 417a493..3131113 100644
+index 9189160..c0f6e18 100644
 --- a/msgpack.nvgt
 +++ b/msgpack.nvgt
-@@ -235,6 +235,7 @@ class mp_value {
+@@ -278,6 +278,7 @@ class mp_value {
  	private any@ content;
  
  	mp_value(int type, int format, any@ content) {
@@ -10,7 +10,7 @@ index 417a493..3131113 100644
  		this.init(type, format, content);
  	}
  
-@@ -245,6 +246,7 @@ class mp_value {
+@@ -288,6 +289,7 @@ class mp_value {
  		this.itype = type;
  		this.iformat = format;
  		@this.content = @content;
@@ -18,7 +18,7 @@ index 417a493..3131113 100644
  	}
  
  	// you can't get nil
-@@ -635,6 +637,7 @@ class mp_value {
+@@ -670,6 +672,7 @@ class mp_value {
  	// upcast to type of same sign and check if positive or negative, then decide format based on ranges
  	// once format is decided, squish value to conform to it
  	private void store_positive_int(uint64 v) {
@@ -26,7 +26,7 @@ index 417a493..3131113 100644
  		any a;
  		int format = 0;
  		if (v <= 0x7f) {
-@@ -661,6 +664,7 @@ class mp_value {
+@@ -696,6 +699,7 @@ class mp_value {
  	}
  
  	private void store_negative_int(int64 v) {
@@ -34,7 +34,7 @@ index 417a493..3131113 100644
  		any a;
  		int format = 0;
  		if (v >= -32) {
-@@ -689,14 +693,17 @@ class mp_value {
+@@ -724,14 +728,17 @@ class mp_value {
  	// the rest of the logic can take place in constructors, as it wouldn't otherwise be duplicated
  	mp_value() {
  		// empty constructor, perhaps useful way to store nil?
@@ -52,7 +52,7 @@ index 417a493..3131113 100644
  		this.init(MPT_FLOAT, MPF_FLOAT32, any(v));
  	}
  
-@@ -705,14 +712,17 @@ class mp_value {
+@@ -740,14 +747,17 @@ class mp_value {
  		// if so, we're saving 4 bytes
  		float vf = v;
  		if (v == vf) {
@@ -67,18 +67,18 @@ index 417a493..3131113 100644
  	// store strings as either text or bin, depending on the value of is_bin
  	mp_value(const string &in v, bool is_bin = false) {
 +		dbgout((is_bin ? "bin" : "string") + " value constructor, string is length " + v.length());
- 		if (v.length() > 0xFFFFFFFF) throw("msgpack string too long to encode");
+ 		if (v.length() > 0xFFFFFFFF) throw(MP_LARGE_VALUE_EXCEPTION);
  
  		int format = 0;
-@@ -734,6 +744,7 @@ class mp_value {
+@@ -769,6 +779,7 @@ class mp_value {
  
  	mp_value(mp_value@[] & v) {
  		// ref not handle so can't be null
 +		dbgout("array value constructor, size " + v.length());
- 		if (v.length() > 0xFFFFFFFF) throw("msgpack array too big to encode");
+ 		if (v.length() > 0xFFFFFFFF) throw(MP_LARGE_VALUE_EXCEPTION);
  
  		int format = 0;
-@@ -747,6 +758,7 @@ class mp_value {
+@@ -782,6 +793,7 @@ class mp_value {
  	mp_value(mp_map& v) {
  		// ditto with ref
  		// don't have to check size because map return type is uint, so even if it were too big it can't tell us
@@ -86,15 +86,15 @@ index 417a493..3131113 100644
  		int format = 0;
  		uint len = v.get_size();
  		if (len <= 0x0F) format = MPF_FIXMAP;
-@@ -756,6 +768,7 @@ class mp_value {
+@@ -791,6 +803,7 @@ class mp_value {
  	}
  
  	mp_value(mp_ext& v) {
 +		dbgout("ext value constructor with ext type " + v.type + " and length " + v.data.length());
- 		if (v.data.length() >= 0xFFFFFFFF) throw("msgpack string too long to encode");
+ 		if (v.data.length() >= 0xFFFFFFFF) throw(MP_LARGE_VALUE_EXCEPTION);
  
  		int format = 0;
-@@ -773,37 +786,45 @@ class mp_value {
+@@ -808,37 +821,45 @@ class mp_value {
  
  	// now for the constructors for all the integer types that pass off to the ranging functions
  	mp_value(uint8 v) {
@@ -140,8 +140,8 @@ index 417a493..3131113 100644
  		if (v >= 0) store_positive_int(v);
  		else store_negative_int(v);
  	}
-@@ -1006,21 +1027,25 @@ class mp_timestamp {
- 		datastream ds(data,"",STREAM_BYTE_ORDER_NETWORK);
+@@ -1029,21 +1050,25 @@ class mp_timestamp {
+ 		datastream ds(data, "", STREAM_BYTE_ORDER_NETWORK);
  		if (data.length() == 4) {
  			// timestamp 32, seconds since epoch as an unsigned int
 +			dbgout("loading 4-byte timestamp");
@@ -166,7 +166,7 @@ index 417a493..3131113 100644
  			ds.close();
  			throw("msgpack invalid timestamp format");
  		}
-@@ -1050,14 +1075,17 @@ class mp_timestamp {
+@@ -1073,14 +1098,17 @@ class mp_timestamp {
  			uint64 data64 = (int64(this.nsecs) << 34) | this.secs;
  			if (data64 & 0xffffffff00000000 == 0) {
  				// timestamp 32
@@ -184,7 +184,7 @@ index 417a493..3131113 100644
  			ds.write_uint(this.nsecs);
  			ds.write_int64(this.secs);
  		}
-@@ -1587,6 +1615,7 @@ class mp_decoder {
+@@ -1609,6 +1637,7 @@ class mp_decoder {
  		stream.rseek(0); // the docs are in fact wrong, this started at the end too!
  		this.state = MPDS_READY;
  		this.fixed_length = fixed_length;
@@ -192,7 +192,7 @@ index 417a493..3131113 100644
  	}
  
  	// this constructor is to be called for sub-decoders, passing some values so stream is synchronized
-@@ -1607,6 +1636,7 @@ class mp_decoder {
+@@ -1629,6 +1658,7 @@ class mp_decoder {
  			temp.reserve(items_to_read);
  			@cur_array = temp;
  		}
@@ -200,7 +200,7 @@ index 417a493..3131113 100644
  	}
  
  	~mp_decoder() {
-@@ -1630,6 +1660,7 @@ class mp_decoder {
+@@ -1651,6 +1681,7 @@ class mp_decoder {
  	// if you use one decoder to handle many separate streams, it's useful to call this between each instance, otherwise the internal stream will buffer all data fed previously!
  	void reset(const string &in initial = "", bool fixed_length = false) {
  		if (sub_decoder !is null) {
@@ -208,23 +208,22 @@ index 417a493..3131113 100644
  			sub_decoder.reset(); // recursively reset, we can knock off an entire chain from the top this way
  			@sub_decoder = null;
  		}
-@@ -1643,6 +1674,7 @@ class mp_decoder {
+@@ -1664,12 +1695,14 @@ class mp_decoder {
  			this.state = MPDS_READY;
  			this.prev_state = MPDS_MORE_DATA;
  			this.fixed_length = fixed_length;
 +			dbgout("Decoder reset, initial data is " + initial.length() + " bytes" + (fixed_length ? " and will not grow" : ""));
  		} else {
  			@this.stream = null;
- 			if(this.is_map) {
-@@ -1650,6 +1682,7 @@ class mp_decoder {
+ 			if (this.is_map) {
+ 				@this.cur_map = null;
  				@this.cur_key = null;
- 			}
- 			else @this.cur_array = null;
+ 			} else @this.cur_array = null;
 +			dbgout("sub-decoder reset");
  		}
  	}
  
-@@ -1663,10 +1696,12 @@ class mp_decoder {
+@@ -1683,10 +1716,12 @@ class mp_decoder {
  		stream.write(data);
  		stream.rseek(stream.rpos); // hack to make available report the true number of bytes available after pushing
  		bool s = this.check_more_data_resolved();
@@ -237,7 +236,7 @@ index 417a493..3131113 100644
  		if (state == MPDS_MORE_DATA) { // you've given it more bytes, is it enough to continue?
  			bool useprevstate = false;
  			if (sub_decoder !is null)
-@@ -1725,6 +1760,7 @@ class mp_decoder {
+@@ -1745,6 +1780,7 @@ class mp_decoder {
  	protected void set_state(mp_decoder_state state) {
  		prev_state = this.state;
  		this.state = state;
@@ -245,7 +244,7 @@ index 417a493..3131113 100644
  	}
  
  	protected void set_currents(mp_format format, mp_type type, mp_count_type count_type, mp_count count) {
-@@ -1732,6 +1768,7 @@ class mp_decoder {
+@@ -1752,6 +1788,7 @@ class mp_decoder {
  		cur_type = type;
  		cur_count_type = count_type;
  		cur_count = count;
@@ -253,7 +252,7 @@ index 417a493..3131113 100644
  	}
  
  	protected void reset_currents() {
-@@ -1740,12 +1777,14 @@ class mp_decoder {
+@@ -1760,12 +1797,14 @@ class mp_decoder {
  		cur_ext_type = 0;
  		cur_skip_content = false;
  		@cur_value = null;
@@ -268,7 +267,7 @@ index 417a493..3131113 100644
  		mp_value@ ret = cur_value;
  		reset_currents();
  		if (fixed_length && !nested && stream.available == 0) set_state(MPDS_END_DATA); // last value in the stream
-@@ -1759,6 +1798,7 @@ class mp_decoder {
+@@ -1779,6 +1818,7 @@ class mp_decoder {
  	// if there was not yet a value to discard, state is unchanged.
  	bool discard_value() {
  		if (state == MPDS_READ) {
@@ -276,7 +275,7 @@ index 417a493..3131113 100644
  			reset_currents();
  			if (fixed_length && !nested && stream.available == 0) set_state(MPDS_END_DATA); // last value in the stream
  			else set_state(MPDS_READY); // prepare to read the next one
-@@ -1772,7 +1812,9 @@ class mp_decoder {
+@@ -1792,7 +1832,9 @@ class mp_decoder {
  		if (state == MPDS_END_DATA) return state;
  		else if (state != MPDS_READY) return MPDS_INVALID_OPERATION; // invalid operation order!
  
@@ -286,7 +285,7 @@ index 417a493..3131113 100644
  			set_state(!nested ? MPDS_END_DATA : MPDS_MORE_DATA); // a subdecoder can never have the state MPDS_END_DATA as the existence of a subdecoder depends on the parent needing to read complex contents.
  			// If we had hit the end, this would have happened on the parent, in which case it means we've consumed all data in the stream.
  			return state;
-@@ -1782,14 +1824,17 @@ class mp_decoder {
+@@ -1802,14 +1844,17 @@ class mp_decoder {
  		mp_type type = mp_type(mp_infomap[byte][MPI_TYPE]);
  		mp_count_type count_type = mp_count_type(mp_infomap[byte][MPI_COUNT_TYPE]);
  		mp_count count = mp_count(mp_infomap[byte][MPI_COUNT]);
@@ -302,55 +301,55 @@ index 417a493..3131113 100644
  			// only boolean and nil fit here
 +			dbgout("loading standalone value");
  			switch (type) {
- 			case MPT_NIL: {
- 				@cur_value = mp_value(type, format, null);
-@@ -1804,6 +1849,7 @@ class mp_decoder {
- 			break;
+ 				case MPT_NIL: {
+ 					@cur_value = mp_value(type, format, null);
+@@ -1824,6 +1869,7 @@ class mp_decoder {
+ 				break;
  
- 			default:
-+				dbgout("default in standalone switch");
- 				set_state(MPDS_INVALID);
- 				outformat = MP_INVALID;
- 				return state;
-@@ -1812,6 +1858,7 @@ class mp_decoder {
+ 				default:
++					dbgout("default in standalone switch");
+ 					set_state(MPDS_INVALID);
+ 					outformat = MP_INVALID;
+ 					return state;
+@@ -1832,6 +1878,7 @@ class mp_decoder {
  			set_state(MPDS_READ);
  		} else if (count == MPC_SUBFIELD) {
  			// first, check for fixints, which are also stored in just this byte
 +			dbgout("Loading subfield value");
  			switch (format) {
- 			case MPF_POS_FIXINT: {
- 				uint8 val = byte & 0x7f;
-@@ -1833,6 +1880,7 @@ class mp_decoder {
- 			case MPF_FIXSTR: {
- 				set_currents(format, type, count_type, count);
- 				cur_count_argument = byte & 0x1F;
-+				dbgout("current count argument set to " + cur_count_argument + " from subfield");
- 				set_state(MPDS_CONTENT);
- 			}
- 			break;
-@@ -1840,6 +1888,7 @@ class mp_decoder {
- 			case MPF_FIXARRAY: {
- 				set_currents(format, type, count_type, count);
- 				cur_count_argument = byte & 0x0F;
-+				dbgout("current count argument set to " + cur_count_argument + " from subfield");
- 				set_state(MPDS_CONTENT);
- 			}
- 			break;
-@@ -1847,11 +1896,13 @@ class mp_decoder {
- 			case MPF_FIXMAP: {
- 				set_currents(format, type, count_type, count);
- 				cur_count_argument = byte & 0x0F;
-+				dbgout("current count argument set to " + cur_count_argument + " from subfield");
- 				set_state(MPDS_CONTENT);
- 			}
- 			break;
+ 				case MPF_POS_FIXINT: {
+ 					uint8 val = byte & 0x7f;
+@@ -1853,6 +1900,7 @@ class mp_decoder {
+ 				case MPF_FIXSTR: {
+ 					set_currents(format, type, count_type, count);
+ 					cur_count_argument = byte & 0x1F;
++					dbgout("current count argument set to " + cur_count_argument + " from subfield");
+ 					set_state(MPDS_CONTENT);
+ 				}
+ 				break;
+@@ -1860,6 +1908,7 @@ class mp_decoder {
+ 				case MPF_FIXARRAY: {
+ 					set_currents(format, type, count_type, count);
+ 					cur_count_argument = byte & 0x0F;
++					dbgout("current count argument set to " + cur_count_argument + " from subfield");
+ 					set_state(MPDS_CONTENT);
+ 				}
+ 				break;
+@@ -1867,11 +1916,13 @@ class mp_decoder {
+ 				case MPF_FIXMAP: {
+ 					set_currents(format, type, count_type, count);
+ 					cur_count_argument = byte & 0x0F;
++					dbgout("current count argument set to " + cur_count_argument + " from subfield");
+ 					set_state(MPDS_CONTENT);
+ 				}
+ 				break;
  
- 			default:
-+				dbgout("default in subfield switch");
- 				set_state(MPDS_INVALID);
- 				outformat = MP_INVALID;
- 				return state;
-@@ -1865,6 +1916,7 @@ class mp_decoder {
+ 				default:
++					dbgout("default in subfield switch");
+ 					set_state(MPDS_INVALID);
+ 					outformat = MP_INVALID;
+ 					return state;
+@@ -1885,6 +1936,7 @@ class mp_decoder {
  				// so we set argument and change to a different state
  				// we exclude values here because we actually use the count state to read numbers rather than the content state
  				cur_count_argument = count & 0x7f; // lop off the high bit to load the constant argument
@@ -358,7 +357,7 @@ index 417a493..3131113 100644
  				set_state(type == MPT_EXT ? MPDS_EXT_TYPE : MPDS_CONTENT);
  			} else set_state(MPDS_COUNT);
  		}
-@@ -1876,11 +1928,14 @@ class mp_decoder {
+@@ -1896,11 +1948,14 @@ class mp_decoder {
  		if (state != MPDS_COUNT) return MPDS_INVALID_OPERATION;
  
  		uint bytes_to_read = cur_count & 0x7f; // knock off the constant bit
@@ -372,30 +371,30 @@ index 417a493..3131113 100644
 +			dbgout("count is value");
  			any vala; // to store the result
  			switch (cur_format) {
- 			case MPF_FLOAT32: {
-@@ -1944,6 +1999,7 @@ class mp_decoder {
- 			break;
- 
- 			default: {
-+				dbgout("default in value switch");
- 				set_state(MPDS_INVALID);
- 				outcount = 0;
- 				return state;
-@@ -1968,11 +2024,13 @@ class mp_decoder {
+ 				case MPF_FLOAT32: {
+@@ -1964,6 +2019,7 @@ class mp_decoder {
  				break;
  
- 			default:
-+				dbgout("default in count width switch");
- 				set_state(MPDS_INVALID);
- 				outcount = 0;
- 				return state;
+ 				default: {
++					dbgout("default in value switch");
+ 					set_state(MPDS_INVALID);
+ 					outcount = 0;
+ 					return state;
+@@ -1988,11 +2044,13 @@ class mp_decoder {
+ 					break;
+ 
+ 				default:
++					dbgout("default in count width switch");
+ 					set_state(MPDS_INVALID);
+ 					outcount = 0;
+ 					return state;
  			}
  			cur_count_argument = count_argument;
 +			dbgout("loaded current count argument " + cur_count_argument);
  			outcount = cur_count_argument;
  			set_state((cur_type == MPT_EXT ? MPDS_EXT_TYPE : MPDS_CONTENT));
  		}
-@@ -1982,11 +2040,14 @@ class mp_decoder {
+@@ -2002,11 +2060,14 @@ class mp_decoder {
  	mp_decoder_state read_ext_type(int8 &out out_ext_type = void) {
  		if (state != MPDS_EXT_TYPE) return MPDS_INVALID_OPERATION;
  
@@ -410,7 +409,7 @@ index 417a493..3131113 100644
  		cur_ext_type = ext_type;
  		out_ext_type = cur_ext_type;
  		set_state(MPDS_CONTENT);
-@@ -1996,21 +2057,26 @@ class mp_decoder {
+@@ -2016,21 +2077,26 @@ class mp_decoder {
  	mp_decoder_state read_content(bool skip = false) {
  		if (state != MPDS_CONTENT) return MPDS_INVALID_OPERATION;
  
@@ -437,17 +436,17 @@ index 417a493..3131113 100644
  				if (cur_type == MPT_EXT)
  					@cur_value = mp_value(cur_type, cur_format, any(mp_ext(cur_ext_type, data)));
  				else
-@@ -2020,7 +2086,9 @@ class mp_decoder {
+@@ -2040,7 +2106,9 @@ class mp_decoder {
  			}
  		} else if (cur_count_type == MPCT_ITEMS) {
  			// arrays are the only ones that use this type
 +			dbgout("content is n items");
  			if (recursion_level >= max_recursion) {
-+				dbgout("Recursion level of "+max_recursion+" exceeded");
++				dbgout("Recursion level of " + max_recursion + " exceeded");
  				set_state(MPDS_INVALID);
  				throw(MP_RECURSION_LIMIT_EXCEPTION);
  				return MPDS_INVALID;
-@@ -2032,6 +2100,7 @@ class mp_decoder {
+@@ -2052,6 +2120,7 @@ class mp_decoder {
  				mp_decoder_state ts = sub_decoder.subdecoder_iterate_read();
  				if (ts == MPDS_READ) {
  					// retrieve that value now from the sub-decoder and destroy it
@@ -455,7 +454,7 @@ index 417a493..3131113 100644
  					mp_value@[]@ data = sub_decoder.get_array();
  					@cur_value = mp_value(cur_type, cur_format, any(data));
  					@sub_decoder = null;
-@@ -2039,17 +2108,21 @@ class mp_decoder {
+@@ -2059,17 +2128,21 @@ class mp_decoder {
  				// the other states it could return would be MPDS_INVALID and MPDS_MORE_DATA, both of which need to bubble up.
  				// if mpds_MORE_DATA happens, pushing more data will clear it and allow this to work again
  				set_state(ts);
@@ -464,7 +463,7 @@ index 417a493..3131113 100644
  				// only potential exceptions here are max recursion and invalid key
  				// set state to invalid and rethrow, so that the entire stack of decoders becomes invalid.
  				const string exc = get_exception_info();
-+				dbgout("Subdecoder threw "+exc);
++				dbgout("Subdecoder threw " + exc);
  				set_state(MPDS_INVALID);
  				throw(exc);
  				return MPDS_INVALID;
@@ -473,11 +472,11 @@ index 417a493..3131113 100644
  			// maps are the only ones that use this type
 +			dbgout("content is n pairs");
  			if (recursion_level >= max_recursion) {
-+				dbgout("Recursion level of "+max_recursion+" exceeded");
++				dbgout("Recursion level of " + max_recursion + " exceeded");
  				set_state(MPDS_INVALID);
  				throw(MP_RECURSION_LIMIT_EXCEPTION);
  				return MPDS_INVALID;
-@@ -2061,6 +2134,7 @@ class mp_decoder {
+@@ -2081,6 +2154,7 @@ class mp_decoder {
  				mp_decoder_state ts = sub_decoder.subdecoder_iterate_read();
  				if (ts == MPDS_READ) {
  					// retrieve that value now from the sub-decoder and destroy it
@@ -485,7 +484,7 @@ index 417a493..3131113 100644
  					mp_map@ data = sub_decoder.get_map();
  					@cur_value = mp_value(cur_type, cur_format, any(data));
  					@sub_decoder = null;
-@@ -2068,14 +2142,17 @@ class mp_decoder {
+@@ -2088,14 +2162,17 @@ class mp_decoder {
  				// the other states it could return would be MPDS_INVALID and MPDS_MORE_DATA, both of which need to bubble up.
  				// if mpds_MORE_DATA happens, pushing more data will clear it and allow this to work again
  				set_state(ts);
@@ -494,7 +493,7 @@ index 417a493..3131113 100644
  				// only potential exceptions here are max recursion and invalid key
  				// set state to invalid and rethrow, so that the entire stack of decoders becomes invalid.
  				const string exc = get_exception_info();
-+				dbgout("Subdecoder threw "+exc);
++				dbgout("Subdecoder threw " + exc);
  				set_state(MPDS_INVALID);
  				throw(exc);
  			}
@@ -503,7 +502,7 @@ index 417a493..3131113 100644
  			set_state(MPDS_INVALID); // what state have you gotten me in, anyway?
  		}
  		return state;
-@@ -2086,6 +2163,7 @@ class mp_decoder {
+@@ -2106,6 +2183,7 @@ class mp_decoder {
  	// because of this, you'll have to call get_value yourself if it returns MPDS_READ
  	mp_decoder_state try_read_value(bool skip = false) {
  		// the states shall progress in the order notated in the enumeration, except some may be skipped depending on the data itself
@@ -511,7 +510,7 @@ index 417a493..3131113 100644
  		mp_decoder_state ts = state;
  		if (ts == MPDS_READY) ts = this.read_format();
  		if (ts == MPDS_COUNT) ts = this.read_count();
-@@ -2094,6 +2172,7 @@ class mp_decoder {
+@@ -2114,6 +2192,7 @@ class mp_decoder {
  		// if all succeeded, that chain should give us MPDS_READ
  		// else we ran into something like MPDS_MORE_DATA, or skip gave us MPDS_READY again
  		// in either case, just return as is
@@ -519,7 +518,7 @@ index 417a493..3131113 100644
  		return ts;
  	}
  
-@@ -2131,6 +2210,7 @@ class mp_decoder {
+@@ -2151,6 +2230,7 @@ class mp_decoder {
  	mp_decoder_state subdecoder_iterate_read() {
  		if (nested) {
  			if (is_map) {
@@ -527,23 +526,23 @@ index 417a493..3131113 100644
  				while (items_to_read > 0) {
  					mp_decoder_state ts = try_read_value();
  					if (ts == MPDS_READ) {
-@@ -2149,6 +2229,7 @@ class mp_decoder {
- 								break;
+@@ -2169,6 +2249,7 @@ class mp_decoder {
+ 									break;
  
- 								default: {
-+									dbgout("non-key type " + debug_enum(MPI_FORMAT, val.format));
- 									set_state(MPDS_INVALID);
- 									throw(MP_INVALID_KEY_TYPE_EXCEPTION);
- 									return MPDS_INVALID;
-@@ -2172,6 +2253,7 @@ class mp_decoder {
- 								break;
+ 									default: {
++										dbgout("non-key type " + debug_enum(MPI_FORMAT, val.format));
+ 										set_state(MPDS_INVALID);
+ 										throw(MP_INVALID_KEY_TYPE_EXCEPTION);
+ 										return MPDS_INVALID;
+@@ -2192,6 +2273,7 @@ class mp_decoder {
+ 									break;
  
- 								default: {
-+									dbgout("non-key type " + debug_enum(MPI_FORMAT, val.format));
- 									set_state(MPDS_INVALID);
- 									throw(MP_INVALID_KEY_TYPE_EXCEPTION);
- 									return MPDS_INVALID;
-@@ -2185,10 +2267,12 @@ class mp_decoder {
+ 									default: {
++										dbgout("non-key type " + debug_enum(MPI_FORMAT, val.format));
+ 										set_state(MPDS_INVALID);
+ 										throw(MP_INVALID_KEY_TYPE_EXCEPTION);
+ 										return MPDS_INVALID;
+@@ -2205,10 +2287,12 @@ class mp_decoder {
  							@cur_key = null;
  							is_map_value = false;
  							items_to_read -= 1;
@@ -556,7 +555,7 @@ index 417a493..3131113 100644
  						if (!is_map_value) is_map_value = true;
  						else {
  							items_to_read -= 1;
-@@ -2199,23 +2283,28 @@ class mp_decoder {
+@@ -2219,23 +2303,28 @@ class mp_decoder {
  				} // while
  				// if we have no items to read the above loop won't execute even once, and state will still be MPDS_READY from us entering!
  				if (state == MPDS_READY && items_to_read == 0) {
@@ -585,7 +584,7 @@ index 417a493..3131113 100644
  					set_state(MPDS_READ);
  				} // MPDS_READY and 0 items to read
  			} // else not map
-@@ -2237,6 +2326,7 @@ class mp_encoder {
+@@ -2257,6 +2346,7 @@ class mp_encoder {
  		this.strict_map_keys = strict_map_keys;
  		@this.stream = datastream("", "", STREAM_BYTE_ORDER_NETWORK);
  		this.stream.sync_rw_cursors = false;
@@ -593,87 +592,87 @@ index 417a493..3131113 100644
  	}
  
  	~mp_encoder() {
-@@ -2250,6 +2340,7 @@ class mp_encoder {
+@@ -2270,6 +2360,7 @@ class mp_encoder {
  	// unlike the decoder, we will not use this function to handle writing the various kinds of integers and floats
  	protected void encode_count(int count_width, uint count_value) {
  		assert(count_width < MPC_SUBFIELD, "Constant/subfield count was passed to encoder::encode_count");
 +		dbgout("Writing count " + count_value + " of type " + debug_enum(MPI_COUNT, count_width));
  		switch (count_width) {
- 		case MPC_8BIT:
- 			stream.write_uint8(count_value);
-@@ -2264,6 +2355,7 @@ class mp_encoder {
- 			break;
+ 			case MPC_8BIT:
+ 				stream.write_uint8(count_value);
+@@ -2284,6 +2375,7 @@ class mp_encoder {
+ 				break;
  
- 		default:
-+			dbgout("default of switch in encode_count");
- 			throw("msgpack invalid count size");
- 			break;
+ 			default:
++				dbgout("default of switch in encode_count");
+ 				throw("msgpack invalid count size");
+ 				break;
  		}
-@@ -2279,6 +2371,7 @@ class mp_encoder {
+@@ -2299,6 +2391,7 @@ class mp_encoder {
  	// MPT_BOOLEAN and MPT_NIL
  	protected void encode_literal(mp_value@ v) {
  		assert(v.type == MPT_BOOLEAN || v.type == MPT_NIL, "non-literal value was passed to encoder::encode_literal");
 +		dbgout("writing literal " + debug_enum(MPI_FORMAT, v.format));
  		switch (v.format) {
- 		case MPF_NIL:
- 		case MPF_FALSE:
-@@ -2287,6 +2380,7 @@ class mp_encoder {
- 			break;
+ 			case MPF_NIL:
+ 			case MPF_FALSE:
+@@ -2307,6 +2400,7 @@ class mp_encoder {
+ 				break;
  
- 		default:
-+			dbgout("default of switch in encode_literal");
- 			throw("msgpack invalid format for literal");
- 			break;
+ 			default:
++				dbgout("default of switch in encode_literal");
+ 				throw("msgpack invalid format for literal");
+ 				break;
  		}
-@@ -2295,6 +2389,7 @@ class mp_encoder {
+@@ -2315,6 +2409,7 @@ class mp_encoder {
  	// MPT_FLOAT
  	protected void encode_float(mp_value@ v) {
  		assert(v.type == MPT_FLOAT, "non-float value was passed to encoder::encode_float");
 +		dbgout("writing float value as " + debug_enum(MPI_FORMAT, v.format));
  		switch (v.format) {
- 		case MPF_FLOAT32:
- 			stream.write_uint8(v.format);
-@@ -2307,6 +2402,7 @@ class mp_encoder {
- 			break;
+ 			case MPF_FLOAT32:
+ 				stream.write_uint8(v.format);
+@@ -2327,6 +2422,7 @@ class mp_encoder {
+ 				break;
  
- 		default:
-+			dbgout("default of switch in encode_float");
- 			throw("msgpack invalid format for float");
- 			break;
+ 			default:
++				dbgout("default of switch in encode_float");
+ 				throw("msgpack invalid format for float");
+ 				break;
  		}
-@@ -2315,6 +2411,7 @@ class mp_encoder {
+@@ -2335,6 +2431,7 @@ class mp_encoder {
  	// MPT_INT
  	protected void encode_int(mp_value@ v) {
  		assert(v.type == MPT_INT, "non-int value was passed to encoder::encode_int");
 +		dbgout("writing int format " + debug_enum(MPI_FORMAT, v.format));
  		switch (v.format) {
- 		case MPF_POS_FIXINT:
- 			stream.write_uint8(v.get_uint8());
-@@ -2365,6 +2462,7 @@ class mp_encoder {
- 			break;
+ 			case MPF_POS_FIXINT:
+ 				stream.write_uint8(v.get_uint8());
+@@ -2385,6 +2482,7 @@ class mp_encoder {
+ 				break;
  
- 		default:
-+			dbgout("default of switch in encode_int");
- 			throw("msgpack invalid format for integer");
- 			break;
+ 			default:
++				dbgout("default of switch in encode_int");
+ 				throw("msgpack invalid format for integer");
+ 				break;
  		}
-@@ -2374,6 +2472,7 @@ class mp_encoder {
+@@ -2394,6 +2492,7 @@ class mp_encoder {
  	protected void encode_string(mp_value@ v) {
  		assert(v.type == MPT_STRING || v.type == MPT_BIN, "non-string type passed to encoder::encode_string");
  		const string data = v.get_string();
 +		dbgout("writing string of length " + data.length() + " as " + debug_enum(MPI_FORMAT, v.format));
  		switch (v.format) {
- 		case MPF_FIXSTR: {
- 			uint8 to_write = MPF_FIXSTR | uint8(data.length()); // subfield
-@@ -2394,6 +2493,7 @@ class mp_encoder {
- 		break;
+ 			case MPF_FIXSTR: {
+ 				uint8 to_write = MPF_FIXSTR | uint8(data.length()); // subfield
+@@ -2414,6 +2513,7 @@ class mp_encoder {
+ 			break;
  
- 		default:
-+			dbgout("default of swich in encode_string");
- 			throw("msgpack invalid string/bin format passed to write_string");
- 			return;
+ 			default:
++				dbgout("default of swich in encode_string");
+ 				throw("msgpack invalid string/bin format passed to write_string");
+ 				return;
  		}
-@@ -2404,6 +2504,7 @@ class mp_encoder {
+@@ -2424,6 +2524,7 @@ class mp_encoder {
  	// MPT_EXT
  	protected void encode_ext(mp_value@ v) {
  		assert(v.type == MPT_EXT, "non-ext type passed to encoder::encode_ext");
@@ -681,55 +680,55 @@ index 417a493..3131113 100644
  		mp_ext@ e = v.get_ext();
  		const string data = e.data;
  		switch (v.format) {
-@@ -2425,6 +2526,7 @@ class mp_encoder {
- 			break;
+@@ -2445,6 +2546,7 @@ class mp_encoder {
+ 				break;
  
- 		default:
-+			dbgout("default of switch in encode_ext");
- 			throw("msgpack invalid format for ext");
- 			return;
+ 			default:
++				dbgout("default of switch in encode_ext");
+ 				throw("msgpack invalid format for ext");
+ 				return;
  		}
-@@ -2441,6 +2543,7 @@ class mp_encoder {
- 		}
+@@ -2460,6 +2562,7 @@ class mp_encoder {
+ 			throw(MP_RECURSION_LIMIT_EXCEPTION);
  		mp_value@[]@ a = v.get_array();
  		const uint len = a.length();
 +		dbgout("writing array format " + debug_enum(MPI_FORMAT, v.format) + " (" + len + " items");
  		switch (v.format) {
- 		case MPF_FIXARRAY: {
- 			uint8 to_write = MPF_FIXARRAY | uint8(len);
-@@ -2456,6 +2559,7 @@ class mp_encoder {
- 		break;
+ 			case MPF_FIXARRAY: {
+ 				uint8 to_write = MPF_FIXARRAY | uint8(len);
+@@ -2475,6 +2578,7 @@ class mp_encoder {
+ 			break;
  
- 		default:
-+			dbgout("default of switch in encode_array");
- 			throw("msgpack invalid format for array");
- 			return;
+ 			default:
++				dbgout("default of switch in encode_array");
+ 				throw("msgpack invalid format for array");
+ 				return;
  		}
-@@ -2473,6 +2577,7 @@ class mp_encoder {
+@@ -2491,6 +2595,7 @@ class mp_encoder {
  		mp_map@ m = v.get_map();
  		mp_value@[][] @ p = m.get_pairs(sort_map_keys);
  		const uint len = p.length();
 +		dbgout("writing map format " + debug_enum(MPI_FORMAT, v.format) + " (" + len + " items");
  		switch (v.format) {
- 		case MPF_FIXMAP: {
- 			uint8 to_write = MPF_FIXMAP | uint8(len);
-@@ -2488,6 +2593,7 @@ class mp_encoder {
- 		break;
- 
- 		default:
-+			dbgout("default of switch in encode_map");
- 			throw("msgpack invalid format for map");
- 			return;
- 		}
-@@ -2539,6 +2645,7 @@ class mp_encoder {
- 				break;
+ 			case MPF_FIXMAP: {
+ 				uint8 to_write = MPF_FIXMAP | uint8(len);
+@@ -2506,6 +2611,7 @@ class mp_encoder {
+ 			break;
  
  			default:
-+				dbgout("default of switch in encode_value");
- 				throw("msgpack invalid value type");
- 				break;
++				dbgout("default of switch in encode_map");
+ 				throw("msgpack invalid format for map");
+ 				return;
+ 		}
+@@ -2556,6 +2662,7 @@ class mp_encoder {
+ 					break;
+ 
+ 				default:
++					dbgout("default of switch in encode_value");
+ 					throw("msgpack invalid value type");
+ 					break;
  			}
-@@ -2763,17 +2870,21 @@ class mp_encoder {
+@@ -2780,16 +2887,20 @@ class mp_encoder {
  
  // dumps, dump a value to a string and return it immediately
  const string mp_dumps(mp_value@ v, bool sort_map_keys = false, bool strict_map_keys = true, uint max_recursion = 100) {
@@ -742,31 +741,28 @@ index 417a493..3131113 100644
  
  // dumps_chain, dump a chain (array) of values to a string and return it immediately. Array is not serialized as array.
  const string mp_dumps_chain(mp_value@[]& v, bool sort_map_keys = false, bool strict_map_keys = true, uint max_recursion = 100) {
-+	dbgout("dumps_chain with "+v.length()+" values");
++	dbgout("dumps_chain with " + v.length() + " values");
  	mp_encoder enc(strict_map_keys, max_recursion);
- 	for(uint i = 0; i < v.length(); i++) {
+ 	for (uint i = 0; i < v.length(); i++)
  		enc.write_value(v[i], sort_map_keys);
- 	}
 +	dbgout("end dumps_chain");
  	return enc.flush();
  }
  
-@@ -2781,22 +2892,27 @@ const string mp_dumps_chain(mp_value@[]& v, bool sort_map_keys = false, bool str
+@@ -2797,20 +2908,25 @@ const string mp_dumps_chain(mp_value@[]& v, bool sort_map_keys = false, bool str
  // if the string contains a chain of values, only the first one will be returned! Use loads_chain to handle them all.
  // if any error occurs and a value is not able to be retrieved on the first read call, null will be returned
- mp_value@ mp_loads(const string &in data, bool strict_map_keys=true, uint max_recursion = 100) {
-+	dbgout("loads with "+data.length()+" bytes of data");
+ mp_value@ mp_loads(const string &in data, bool strict_map_keys = true, uint max_recursion = 100) {
++	dbgout("loads with " + data.length() + " bytes of data");
  	mp_decoder dec(data, true, strict_map_keys, max_recursion); // fixed-length mode
  	try {
  		mp_decoder_state ts = dec.try_read_value();
- 		if(ts == MPDS_READ)
- 		{
+ 		if (ts == MPDS_READ) {
 +			dbgout("end loads");
  			return dec.get_value();
  		}
- 	}
- 	catch {
-+		dbgout("decoder threw "+get_exception_info()+", loads terminating");
+ 	} catch {
++		dbgout("decoder threw " + get_exception_info() + ", loads terminating");
  		return null;
  	}
 +	dbgout("Improper state in loads");
@@ -774,29 +770,26 @@ index 417a493..3131113 100644
  }
  
  // load a chain of values until either no more data is available or an error condition occurs
- mp_value@[]@ mp_loads_chain(const string &in data, bool strict_map_keys=true, uint max_recursion = 100) {
-+	dbgout("loads_chain with "+data.length()+" bytes of data");
+ mp_value@[]@ mp_loads_chain(const string &in data, bool strict_map_keys = true, uint max_recursion = 100) {
++	dbgout("loads_chain with " + data.length() + " bytes of data");
  	mp_value@[] ret;
  	mp_decoder dec(data, true, strict_map_keys, max_recursion); // fixed-length mode
- 	while(dec.get_state() == MPDS_READY) {
-@@ -2805,15 +2921,186 @@ mp_value@[]@ mp_loads_chain(const string &in data, bool strict_map_keys=true, ui
- 			if(ts == MPDS_READ)
- 			{
+ 	while (dec.get_state() == MPDS_READY) {
+@@ -2818,12 +2934,183 @@ mp_value@[]@ mp_loads_chain(const string &in data, bool strict_map_keys = true,
+ 			mp_decoder_state ts = dec.try_read_value();
+ 			if (ts == MPDS_READ) {
  				ret.insert_last(dec.get_value());
-+				dbgout("loads_chain got value, now have "+ret.length()+" to return");
- 			}
- 			else
- 			{
++				dbgout("loads_chain got value, now have " + ret.length() + " to return");
+ 			} else {
 +				dbgout("loads_chain got non-read state");
  				break;
  			}
- 		}
- 		catch {
-+			dbgout("loads_chain got exception "+get_exception_info());
+ 		} catch {
++			dbgout("loads_chain got exception " + get_exception_info());
  			break;
  		}
  	}
-+	dbgout("end loads_chain with "+ret.length()+" values");
++	dbgout("end loads_chain with " + ret.length() + " values");
  	return ret;
 +}
 +/// BEGIN DEBUG ///
@@ -876,41 +869,41 @@ index 417a493..3131113 100644
 +string debug_enum(uint infotype, int value) {
 +	if (infotype == 4) {
 +		switch (value) {
-+		case MPDS_END_DATA:
-+			return "MPDS_END_DATA";
-+			break;
++			case MPDS_END_DATA:
++				return "MPDS_END_DATA";
++				break;
 +
-+		case MPDS_MORE_DATA:
-+			return "MPDS_MORE_DATA";
-+			break;
++			case MPDS_MORE_DATA:
++				return "MPDS_MORE_DATA";
++				break;
 +
-+		case MPDS_INVALID:
-+			return "MPDS_INVALID";
-+			break;
++			case MPDS_INVALID:
++				return "MPDS_INVALID";
++				break;
 +
-+		case MPDS_READY:
-+			return "MPDS_READY";
-+			break;
++			case MPDS_READY:
++				return "MPDS_READY";
++				break;
 +
-+		case MPDS_COUNT:
-+			return "MPDS_COUNT";
-+			break;
++			case MPDS_COUNT:
++				return "MPDS_COUNT";
++				break;
 +
-+		case MPDS_EXT_TYPE:
-+			return "MPDS_EXT_TYPE";
-+			break;
++			case MPDS_EXT_TYPE:
++				return "MPDS_EXT_TYPE";
++				break;
 +
-+		case MPDS_CONTENT:
-+			return "MPDS_CONTENT";
-+			break;
++			case MPDS_CONTENT:
++				return "MPDS_CONTENT";
++				break;
 +
-+		case MPDS_READ:
-+			return "MPDS_READ";
-+			break;
++			case MPDS_READ:
++				return "MPDS_READ";
++				break;
 +
-+		default:
-+			return "unknown state";
-+			break;
++			default:
++				return "unknown state";
++				break;
 +		}
 +
 +		return "unknown state";
@@ -923,22 +916,22 @@ index 417a493..3131113 100644
 +string print_value(mp_value@ v) {
 +	string ret = debug_enum(MPI_TYPE, v.type) + "/" + debug_enum(MPI_FORMAT, v.format) + ": ";
 +	switch (v.type) {
-+	case MPT_INT:
-+	case MPT_FLOAT:
-+	case MPT_NIL:
-+	case MPT_BOOLEAN:
-+		ret += string(v);
-+		return ret;
-+		break;
++		case MPT_INT:
++		case MPT_FLOAT:
++		case MPT_NIL:
++		case MPT_BOOLEAN:
++			ret += string(v);
++			return ret;
++			break;
 +
-+	case MPT_STRING:
-+	case MPT_BIN:
-+		ret += (v.type == MPT_BIN ? "b" : "") + "\"" + string(v) + "\"";
-+		return ret;
-+		break;
++		case MPT_STRING:
++		case MPT_BIN:
++			ret += (v.type == MPT_BIN ? "b" : "") + "\"" + string(v) + "\"";
++			return ret;
++			break;
 +
-+	default:
-+		break;
++		default:
++			break;
 +	}
 +	if (v.type == MPT_EXT) {
 +		mp_ext@ e = v.get_ext();

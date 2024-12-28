@@ -61,6 +61,7 @@ All exceptions thrown by this library start with the string "msgpack " to help a
 - `MP_TYPE_MISMATCH_EXCEPTION`: Thrown when an attempted type conversion is impossible.
 - `MP_INVALID_KEY_TYPE_EXCEPTION`: Thrown when an unsupported key type is encountered when encoding or decoding a map. Whether a given type is supported depends on the setting of strict key mode.
 - `MP_RECURSION_LIMIT_EXCEPTION`: Thrown when the maximum recursion depth is exceeded when encoding or decoding.
+- `MP_LARGE_VALUE_EXCEPTION`: Thrown when attempting to encode a value that exceeds the representable bounds in msgpack. This happens when the length of a string or ext data, the number of values in an array, or the number of pairs in a map exceeds (2^32)-1.
 
 ## Known Extension Type Codes
 These int8 constants are used as the type code for known extension types, those types for which the library itself defines a conversion beyond ext objects.
@@ -217,7 +218,7 @@ The specified type if possible. If not possible, `MP_TYPE_MISMATCH_EXCEPTION` wi
 ##### Notes
 1. This get method is used for both the str and bin types, as the function of these methods is based on the NVGT types they return. The value's type property will determine whether this should be treated as a text or binary string.
 2. The **allow_int_source** parameter determines whether integer types will be coerced to floating point types (true) or whether attempting to do so will throw the type mismatch exception (false). Especially in the case of getting to **float**, loss of precision concerns apply!
-3. All of these methods will function so long as the value is of type **MPT_INT**, automatic coercion is internally performed. This means that bits are copied directly and truncated or sign-extended as needed. In particular, this means that you are allowed to get an unsigned type to a signed type and vice versa, which can have undesireable behavior if done wrong! It is safe to get a signed or unsigned type to a larger signed type, and it is always safe to get a smaller type to a larger type if they are both the same signedness. Doing anything else runs the risk of producing unexpected values as a result of two's complement. If you are uncertain exactly what type the value was stored as and thus what conversions are safe, check the value's format property, which tells you exactly what binary representation the value uses.
+3. All of these methods will function so long as the value is of type **MPT_INT**, automatic coercion is internally performed. This means that bits are copied directly and truncated or sign-extended as needed. In particular, this means that you are allowed to get an unsigned type to a signed type and vice versa, which can have undesireable behavior if done wrong! It is safe to get a signed or unsigned type to a larger signed type, and it is always safe to get a smaller type to a larger type if they are both the same signedness. Doing anything else runs the risk of producing unexpected values as a result of two's complement. If you are uncertain exactly what type the value was stored as and thus what conversions are safe, check the value's format property, which tells you exactly what binary representation the value uses, or check the signed property to determine its signedness alone if you intend to use a 64-bit return type.
 4. Any mutation performed on the resulting handle may propagate back to the value object it came from, including if this object is stored inside some container. As mentioned above, this may cause the format property in particular to change.
 
 ### Properties
@@ -233,8 +234,20 @@ The format (specific representation) of this value expressed as a value from the
 const int format;
 ```
 
+#### signed
+Whether the format is a signed numeric value. Useful only for integers.
+```
+const int signed;
+```
+This property returns one of three possible values.
+
+- 0: The format is an unsigned type, which is any of the **MPF_UINT** formats or **MPF_POS_FIXINT**.
+- 1: The format is a signed type, which is any of the **MPF_INT**formats or **MPF_NEG_FIXINT**.
+- -1: The format does not have sign bit semantics. True for every format family besides **MPT_INT** and **MPT_FLOAT**, where **MPT_FLOAT** always returns signed.
+
 ### Supported Operations
-Value objects support equality comparison (`==`), which compares recursively by type, format and value. Importantly, this means that due to the type not matching, an integer value will never compare equal to a float value even if they are numerically equal, and likewise a string value will never compare equal to a bin value even if they have the same contents.
+Value objects support equality comparison (`==`), which compares recursively by type and value. Importantly, this means that due to the type not matching, an integer value will never compare equal to a float value even if they are numerically equal, and likewise a string value will never compare equal to a bin value even if they have the same contents.
+Different formats of the same type, however, such as **MPF_FLOAT32** and **MPF_FLOAT64**, will compare equal if the highest upcasts of them both compare equal. This applies to integers as well, which upcast to the 64-bit type of the same sign, except if one format is signed and the other is unsigned. They will always compare unequal in that case, even if they might be equal in their binary representations.
 
 Value objects support implicit and explicit conversion to `bool`, `float`, `double`, `string`, (u)int8/16/32/64, `mp_value@[]`, `mp_map`, and `mp_ext`. They also support implicit and explicit casting to `mp_value@[]@`, `mp_map@`, and `mp_ext@`. In the case of casting to the wrong type, the cast will simply return null, standard for an invalid cast, rather than the type mismatch exception being thrown.
 
